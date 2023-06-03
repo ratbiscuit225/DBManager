@@ -138,9 +138,17 @@ class DBManager:
 						gribby.write(mike.read()) # first, write the GRIB file to disk
 						self.__createNewGrib(model, cycle, hour, member, fHour) # second, create record of the GRIB we just created in the database
 			except HTTPError as hte:
-				#raise ValueError('Specified GRIB not available for download.')
+				raise ValueError('Specified GRIB (' + self.__gribName(model, cycle, hour, member, fHour) + ') not available for download.')
 				#return None
-				print(filePath)
+				#print(filePath)
+			except urllib2.URLError as urle:
+				if isinstance(e.reason, socket.timeout):
+					raise GRIBTimeoutException("NOMADS connection timed out for " + self.__gribName(model, cycle, hour, member, fHour), filePath)
+				else:
+					raise
+			except socket.timeout as ste:
+				raise GRIBTimeoutError("There was a connection error with " + self.__gribName(model, cycle, hour, member, fHour), filePath)
+
 			return filePath
 
 
@@ -155,16 +163,21 @@ class DBManager:
 			if member is None:
 				# download control member
 				try:
-					self.downloadGrib(model, cycle, hour, -1, i)
+					self.downloadGrib(model, cycle, hour, -1, i) 
 				except ValueError as v:
-					raise ValueError(str(v))
+					print(str(v))
+				except GRIBTimeoutError as gte: # if the connection times out, just print the filepath of the missing GRIB
+					print(str(gte))
+
 				# loop through every member if no member is selected
 				for j in range(1,self.models[model]['members']+1):
-					print(j)
+					#print(j)
 					try:
 						self.downloadGrib(model, cycle, hour, j, i)
 					except ValueError as v:
-						raise ValueError(str(v))
+						print(str(v))
+					except GRIBTimeoutError as gte: # if the connection times out, just print the filepath of the missing GRIB
+						print(str(gte))
 			else:
 				try: 
 					self.downloadGrib(model, cycle, hour, member, i) # otherwise just download the requested member
@@ -372,3 +385,9 @@ class DBManager:
 		self.curs.execute(sqlString)
 		self.conn.commit()
 
+
+
+class GRIBTimeoutError(Exception):
+	def __init__(self, message, gribname):
+		super().__init__(message)
+		self.gribname = gribname 
