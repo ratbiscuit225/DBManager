@@ -1,0 +1,43 @@
+listAllGribs():
+ - Test empty database
+ - Test database containing random assortment of GRIBs
+getLatestGrib():
+ - Test empty database
+ - Test database containing random assortment of GRIBs
+ - Test for specified model with some other model that is *later* than requested model
+__makeMemberString():
+ - testing implicit via testing of supported methods
+__gribName():
+ - testing implicit via testing of supported methods
+__makeWebPath():
+ - testing implicit via testing of supported methods
+__makeLocalPath():
+ - testing implicit via testing of supported methods
+checkForFile():
+ - Try checking for a file that is on the system
+ - Try checking for a file that is not on the system
+ - Try checking for a file that is on the system but not listed in the DB (x)
+ - Try checking for a file that is not on the system, but listed in the DB (x)
+downloadGrib():
+ - Try downloading a file that's not available on NOMADS
+ - Try downloading a file that's available on NOMADS
+ - Try downloading a file that's availble, but already stored on the system
+downloadModel():
+ - Try downloading a model that's not available on NOMADS
+ - Try downloading a model that's already stored locally
+ - Try downloading a model that's partially downloaded locally 
+__createNewGrib():
+ - testing implicit via testing of supported methods
+deleteOldGribs():
+ - Try deleting data that's not there to delete
+ - Try deleting data that's stored locally
+deleteGrib():
+ - Try deleting a specific GRIB that's stored locally
+ - Try deleting a specific GRIB that's not stored locally
+getModelCycles():
+ - Request results w/o mention of a model
+ - Request results with mention of GEFS and/or GEPS only
+queryForGrib():
+ - Try querying a NOMADS grib for GEFS that exists
+ - Try querying a NOMADS grib for GEPS that exists
+ - Try querying a NOMADS grib that doesn't exist

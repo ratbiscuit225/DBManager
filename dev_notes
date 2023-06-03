@@ -1,0 +1,17 @@
+listAllGribs() :: listAllImages()
+getLatestGrib() :: getLatestImage()
+checkForFile() :: checkForImage()
+deleteOldGribs() :: deleteOldImages()
+deleteGrib() :: deleteImage()
+
+__gribName() :: __imageName()
+__makeLocalPath() :: __makeImagePath()
+__createNewGrib() :: __createNewImage()
+
+downloadGrib()
+downloadModel()
+__makeMemberString()
+__makeWebPath()
+queryForGribs()
+
+getModelCycles()

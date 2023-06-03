@@ -1,0 +1,27 @@
+constants:
+        rootSrc: /home/michael.rehnberg/dev/DBManager/grib/
+        imgSrc: /home/michael.rehnberg/dev/DBManager/images/
+        dbname: /home/michael.rehnberg/dev/DBManager/testgeps.db
+        archive: grib
+        leftlon: 95
+        rightlon: 100
+        toplat: 37
+        bottomlat: 34 
+models: 
+        GEPS:
+                members: 20
+                fHours: 120
+                memberName: cmc_gep
+                controlName: cmc_gec
+                increment: 12
+                base: 0
+        GEFS:
+                members: 30
+                fHours: 120
+                memberName: gep
+                controlName: gec
+                increment: 12
+                base: 0
+urlPatterns: 
+        GEPS: https://nomads.ncep.noaa.gov/cgi-bin/filter_cmcens.pl?file={model_name:s}.t{init_time:02d}z.pgrb2a.0p50.f{fhour:03d}&lev_1000_mb=on&lev_100_mb=on&lev_10_mb=on&lev_200_mb=on&lev_250_mb=on&lev_300_mb=on&lev_500_mb=on&lev_50_mb=on&lev_700_mb=on&lev_850_mb=on&lev_925_mb=on&var_RH=on&var_TMP=on&var_UGRD=on&var_VGRD=on&var_VVEL=on&subregion=&leftlon={leftlon:f}&rightlon={rightlon:f}&toplat={toplat:f}&bottomlat={bottomlat:f}&dir=%2Fcmce.{yyyymmdd:s}%2F{ztime:02d}%2Fpgrb2ap5'
+        GEFS: https://nomads.ncep.noaa.gov/cgi-bin/filter_gefs_atmos_0p50a.pl?file={model_name:s}.t{init_time:02d}z.pgrb2a.0p50.f{fhour:03d}&lev_1000_mb=on&lev_100_mb=on&lev_10_mb=on&lev_200_mb=on&lev_250_mb=on&lev_300_mb=on&lev_500_mb=on&lev_50_mb=on&lev_700_mb=on&lev_850_mb=on&lev_925_mb=on&var_RH=on&var_TMP=on&var_UGRD=on&var_VGRD=on&var_VVEL=on&subregion=&leftlon={leftlon:f}&rightlon={leftlon:f}&toplat={leftlon:f}&bottomlat={leftlon:f}&dir=%2Fgefs.{yyyymmdd:s}%2F{ztime:02d}%2Fatmos%2Fpgrb2ap5
