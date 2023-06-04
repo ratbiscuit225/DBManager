@@ -1,6 +1,0 @@
-db:
-        web: /home/michael.rehnberg/GEPSSoundings/db/
-        local: /home/michael.rehnberg/development/DBManager/
-        dbname: testfile
-data:
-        mike: awesome
