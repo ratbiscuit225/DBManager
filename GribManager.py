@@ -83,10 +83,10 @@ def main():
 	manager = dbm.DBManager('/home/michael.rehnberg/dev/DBManager/test_config.yml')
 
 	# update the databases
-	# TODO set up GEFS database archiving
-	#if text:
-		#print('Updating GEFS database...')
-	#deleted_gefs = updateDatabase(manager, 'GEFS')
+	# TODO see how badly this f's up the time
+	if text:
+		print('Updating GEFS database...')
+	deleted_gefs = updateDatabase(manager, 'GEFS', text)
 	if text:
 		print('Updating GEPS database...')
 	deleted_geps = updateDatabase(manager, 'GEPS', text)

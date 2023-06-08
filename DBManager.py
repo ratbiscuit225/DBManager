@@ -5,6 +5,8 @@ import urllib.request as url
 import os
 import yaml
 from urllib.error import HTTPError
+from urllib.error import URLError
+from socket import timeout
 
 ######################################################################
 #	Database Management v1.0                                     #
@@ -141,12 +143,12 @@ class DBManager:
 				raise ValueError('Specified GRIB (' + self.__gribName(model, cycle, hour, member, fHour) + ') not available for download.')
 				#return None
 				#print(filePath)
-			except urllib2.URLError as urle:
-				if isinstance(e.reason, socket.timeout):
+			except URLError as urle:
+				if isinstance(e.reason, timeout):
 					raise GRIBTimeoutException("NOMADS connection timed out for " + self.__gribName(model, cycle, hour, member, fHour), filePath)
 				else:
 					raise
-			except socket.timeout as ste:
+			except timeout as ste:
 				raise GRIBTimeoutError("There was a connection error with " + self.__gribName(model, cycle, hour, member, fHour), filePath)
 
 			return filePath
@@ -158,7 +160,7 @@ class DBManager:
 		inc = self.models[model]['increment'] # set up loop to increment by specified number of forecast hours in configuration
 
 		# loop through every forecast hour 
-		for i in range(0, maxFHour, inc):
+		for i in range(0, maxFHour+inc, inc):
 			# if no member is specified, we're looping through EVERY member of the ensemble...
 			if member is None:
 				# download control member
@@ -182,7 +184,9 @@ class DBManager:
 				try: 
 					self.downloadGrib(model, cycle, hour, member, i) # otherwise just download the requested member
 				except ValueError as v:
-					raise ValueError(str(v))
+					print(str(v))
+				except GRIBTimeoutError as gte:
+					print(str(gte))
 
 
 	# creates a new entry in grib database with details of a particular GRIB file
