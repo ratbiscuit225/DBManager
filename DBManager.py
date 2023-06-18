@@ -100,6 +100,11 @@ class DBManager:
 		return self.constants['rootSrc'] + localPath
 
 
+	# given a model init time and forecast hour, calculates the valid time of that forecast hour
+	def __calculateValidtime(self, hour, fHour):
+		pass
+
+
 	# returns true if particular GRIB already exists in database, false if not
 	# returns path to file, if it exists, otherwise returns None
 	def checkForFile(self, model, cycle, hour, member, fHour):
