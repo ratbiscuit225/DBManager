@@ -4,6 +4,7 @@ import sqlite3 as sq
 import urllib.request as url
 import os
 import yaml
+from datetime import datetime, timedelta
 from urllib.error import HTTPError
 from urllib.error import URLError
 from socket import timeout
@@ -29,7 +30,7 @@ class DBManager:
 		self.urlPatterns = config['urlPatterns']
 		self.conn = sq.connect(self.constants['dbname'])
 		self.curs = self.conn.cursor()
-		self.curs.execute('CREATE TABLE if not exists grib (model TEXT, cycle TEXT, member INTEGER, fhour INTEGER, path TEXT)')
+		self.curs.execute('CREATE TABLE if not exists grib (model TEXT, cycle TEXT, member INTEGER, fhour INTEGER, path TEXT, validTime TEXT)')
 
 	# returns a listing of all GRIB files currently available
 	# results returned as a list of tuples...where each tuple is a single record from the database, structured as (model, cycle, member, forecast-hour, file-path)
@@ -101,8 +102,19 @@ class DBManager:
 
 
 	# given a model init time and forecast hour, calculates the valid time of that forecast hour
-	def __calculateValidtime(self, hour, fHour):
-		pass
+	def __calculateValidTime(self, cycle, hour, fHour):
+		# fhour is literally just a number of hours from the init time
+		# cycle is in the format YYYYDDMM and hour is in the format HH
+		
+		# use datetime() to establish the timedelta or whatever the hell the proper terminology is
+		init_time = datetime.strptime(cycle+''+str(hour).zfill(2), '%Y%m%d%H')
+		valid_time = init_time + timedelta(hours=fHour)
+		return valid_time
+
+		
+	# TODO remove testing function
+	def testValidTime(self, cycle, hour, fHour):
+		return self.__calculateValidTime(cycle, hour, fHour)
 
 
 	# returns true if particular GRIB already exists in database, false if not
@@ -204,9 +216,11 @@ class DBManager:
 		#conn = sq.connect(db)
 		#c = conn.cursor()
 
+		validTime = self.__calculateValidTime(cycle, hour, fHour)
+
 		cyclec = cycle + str(hour).zfill(2)
-		modelTuple = [(model, cyclec, member, fHour, filePath)]
-		sqlString = 'INSERT INTO ' + self.constants['archive'] + ' VALUES (?, ?, ?, ?, ?)'
+		modelTuple = [(model, cyclec, member, fHour, filePath, validTime)]
+		sqlString = 'INSERT INTO ' + self.constants['archive'] + ' VALUES (?, ?, ?, ?, ?, ?)'
 
 		# uses SQLite's executemany() function, which I have only recently discovered but which I understand as follows
 		# replace each individual field's value with a ? in records denoted by ( ... ) in the SQL command
