@@ -3,3 +3,4 @@ grib/*
 base_config.yml
 base_geps.db
 newgeps.db
+OLD.copy_database.sh

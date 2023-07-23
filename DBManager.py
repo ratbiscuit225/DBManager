@@ -161,7 +161,7 @@ class DBManager:
 				#return None
 				#print(filePath)
 			except URLError as urle:
-				if isinstance(e.reason, timeout):
+				if isinstance(urle.reason, timeout):
 					raise GRIBTimeoutException("NOMADS connection timed out for " + self.__gribName(model, cycle, hour, member, fHour), filePath)
 				else:
 					raise
