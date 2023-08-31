@@ -1,7 +1,7 @@
 constants:
         rootSrc: /home/michael.rehnberg/dev/DBManager/grib/
         imgSrc: /home/michael.rehnberg/dev/DBManager/images/
-        dbname: /home/michael.rehnberg/dev/DBManager/base_geps.db
+        dbname: /home/michael.rehnberg/dev/DBManager/base.db
         archive: grib
         leftlon: 95
         rightlon: 100
