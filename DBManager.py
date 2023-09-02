@@ -10,407 +10,407 @@ from urllib.error import URLError
 from socket import timeout
 
 ######################################################################
-#	Database Management v1.0                                     #
-#	2022-10-15                                                   #
+#   Database Management v1.0                                     #
+#   2022-10-15                                                   #
 #                                                                    #
 #                                                                    #
-#	Author: Mike Rehnberg feat. Lots of Help from Jake Wimberly  #
+#   Author: Mike Rehnberg feat. Lots of Help from Jake Wimberly  #
 #                                                                    #
 #                                                                    #
 ######################################################################
 class DBManager:
 
 
-	def __init__(self, db_config):
-		with open(db_config, 'r') as configFile:
-			config = yaml.safe_load(configFile)
-		self.constants = config['constants']
-		#self.constants['dbname'] = dbfile
-		self.models = config['models']
-		self.urlPatterns = config['urlPatterns']
-		self.conn = sq.connect(self.constants['dbname'])
-		self.curs = self.conn.cursor()
-		self.curs.execute('CREATE TABLE if not exists grib (model TEXT, cycle TEXT, member INTEGER, fhour INTEGER, path TEXT, validTime TEXT)')
+    def __init__(self, db_config):
+        with open(db_config, 'r') as configFile:
+            config = yaml.safe_load(configFile)
+        self.constants = config['constants']
+        #self.constants['dbname'] = dbfile
+        self.models = config['models']
+        self.urlPatterns = config['urlPatterns']
+        self.conn = sq.connect(self.constants['dbname'])
+        self.curs = self.conn.cursor()
+        self.curs.execute('CREATE TABLE if not exists grib (model TEXT, cycle TEXT, member INTEGER, fhour INTEGER, path TEXT, validTime TEXT)')
 
-	# returns a listing of all GRIB files currently available
-	# results returned as a list of tuples...where each tuple is a single record from the database, structured as (model, cycle, member, forecast-hour, file-path)
-	def listAllGribs(self):
-		#db = self.constants['dbname']
-		#table = self.constants['archive']
-		#conn = sq.connect(db)
-		#c = conn.cursor()
-		sqlString = 'SELECT * FROM ' + self.constants['archive'] + ' ORDER BY cycle ASC' # build appropriate SQL query
-		self.curs.execute(sqlString)
-		result = self.curs.fetchall()
-		if result is None:
-			raise ValueError('There is no data in the specified database.')
-		return result
-
-
-	# returns the record of the latest GRIB file stored in the database
-	def getLatestGrib(self, model=None):
-		if model is None:
-			sqlString = "SELECT DISTINCT grib.model as gm, grib.cycle as gc FROM grib INNER JOIN ( SELECT model, MAX(cycle) as cycle FROM grib) g ON gm=g.model AND gc=g.cycle" # build appropriate SQL query...does an inner join in order to get the most recent run for each model
-		else:
-			sqlString = "SELECT DISTINCT grib.model as gm, grib.cycle as gc FROM grib INNER JOIN ( SELECT model, MAX(cycle) as cycle FROM grib WHERE model='" + model + "') g ON gm=g.model AND gc=g.cycle"
-		# if a model is specified, add another wrapper query to subset to just the requested model
-
-		self.curs.execute(sqlString)
-		result = self.curs.fetchall()
-		if result is None:
-			raise ValueError('There is no data for the requested model present in the specified database.')
-		return result
+    # returns a listing of all GRIB files currently available
+    # results returned as a list of tuples...where each tuple is a single record from the database, structured as (model, cycle, member, forecast-hour, file-path)
+    def listAllGribs(self):
+        #db = self.constants['dbname']
+        #table = self.constants['archive']
+        #conn = sq.connect(db)
+        #c = conn.cursor()
+        sqlString = 'SELECT * FROM ' + self.constants['archive'] + ' ORDER BY cycle ASC' # build appropriate SQL query
+        self.curs.execute(sqlString)
+        result = self.curs.fetchall()
+        if result is None:
+            raise ValueError('There is no data in the specified database.')
+        return result
 
 
-	# returns the name of the requested model in NOMADS GRIB naming format (i.e. gec00, gep03, etc.)
-	def __makeMemberString(self, model, member):
-		# for both GEPS and GEFS, the control has a different syntax from each of the perturbation members
-		if member == -1:
-			return self.models[model]['controlName'] + '00'
-		else:
-			return self.models[model]['memberName'] + str(member).zfill(2)
+    # returns the record of the latest GRIB file stored in the database
+    def getLatestGrib(self, model=None):
+        if model is None:
+            sqlString = "SELECT DISTINCT grib.model as gm, grib.cycle as gc FROM grib INNER JOIN ( SELECT model, MAX(cycle) as cycle FROM grib) g ON gm=g.model AND gc=g.cycle" # build appropriate SQL query...does an inner join in order to get the most recent run for each model
+        else:
+            sqlString = "SELECT DISTINCT grib.model as gm, grib.cycle as gc FROM grib INNER JOIN ( SELECT model, MAX(cycle) as cycle FROM grib WHERE model='" + model + "') g ON gm=g.model AND gc=g.cycle"
+        # if a model is specified, add another wrapper query to subset to just the requested model
+
+        self.curs.execute(sqlString)
+        result = self.curs.fetchall()
+        if result is None:
+            raise ValueError('There is no data for the requested model present in the specified database.')
+        return result
 
 
-	# returns the name of a GRIB file, formatted via **** THIS SOFTWARE'S **** naming convention, *not* NOMADS convention
-	# the NOMADS model naming convention is incorporated in this, but will be different from, say, a NOMADS URL filename
-	def __gribName(self, model, cycle, hour, member, fHour):
-		# YYYYMMDD.HHz.fXXXX.
-		# ex 20220918.12z.f009.gep02.grib
-		memberString = self.__makeMemberString(model, member)
-	
-		return model + '.' + cycle + '.' + str(hour).zfill(2) + '.f' + str(fHour).zfill(3) + '.' + memberString + '.grib'
+    # returns the name of the requested model in NOMADS GRIB naming format (i.e. gec00, gep03, etc.)
+    def __makeMemberString(self, model, member):
+        # for both GEPS and GEFS, the control has a different syntax from each of the perturbation members
+        if member == -1:
+            return self.models[model]['controlName'] + '00'
+        else:
+            return self.models[model]['memberName'] + str(member).zfill(2)
 
 
-	# given a model, run, forecast hour, and member number, generates the URL to access that GRIB file on NOMADS
-	def __makeWebPath(self, model, cycle, hour, member, fHour):
-		urlPatternBase = self.urlPatterns[model] # url patterns are stored in the class lookup table
-		modelUrlName = self.__makeMemberString(model, member)
-		#if member == -1:
-		#	modelUrlName = self.models[model]['controlName']
-		#else:
-		#	modelUrlName = self.models[model]['memberName'] + str(member).zfill(2)
-		urlPattern = urlPatternBase.format(model_name=modelUrlName, init_time=hour, fhour=fHour, leftlon=self.constants['leftlon'], rightlon=self.constants['rightlon'], toplat=self.constants['toplat'], bottomlat=self.constants['bottomlat'], yyyymmdd=cycle, ztime=hour) # done via built-in Pythonic string formatting/substitution
-		return urlPattern
+    # returns the name of a GRIB file, formatted via **** THIS SOFTWARE'S **** naming convention, *not* NOMADS convention
+    # the NOMADS model naming convention is incorporated in this, but will be different from, say, a NOMADS URL filename
+    def __gribName(self, model, cycle, hour, member, fHour):
+        # YYYYMMDD.HHz.fXXXX.
+        # ex 20220918.12z.f009.gep02.grib
+        memberString = self.__makeMemberString(model, member)
+    
+        return model + '.' + cycle + '.' + str(hour).zfill(2) + '.f' + str(fHour).zfill(3) + '.' + memberString + '.grib'
 
 
-	# given a model, run, forecase hour, and member number, generates the path to that hypothetical GRIB file
-	def __makeLocalPath(self, model, cycle, hour, member, fHour):
-		fileName = self.__gribName(model, cycle, hour, member, fHour)
-		cyclec = cycle + str(hour).zfill(2)
-		localPath = model + '/' + cyclec + '/' + fileName
-		return self.constants['rootSrc'] + localPath
+    # given a model, run, forecast hour, and member number, generates the URL to access that GRIB file on NOMADS
+    def __makeWebPath(self, model, cycle, hour, member, fHour):
+        urlPatternBase = self.urlPatterns[model] # url patterns are stored in the class lookup table
+        modelUrlName = self.__makeMemberString(model, member)
+        #if member == -1:
+        #   modelUrlName = self.models[model]['controlName']
+        #else:
+        #   modelUrlName = self.models[model]['memberName'] + str(member).zfill(2)
+        urlPattern = urlPatternBase.format(model_name=modelUrlName, init_time=hour, fhour=fHour, leftlon=self.constants['leftlon'], rightlon=self.constants['rightlon'], toplat=self.constants['toplat'], bottomlat=self.constants['bottomlat'], yyyymmdd=cycle, ztime=hour) # done via built-in Pythonic string formatting/substitution
+        return urlPattern
 
 
-	# given a model init time and forecast hour, calculates the valid time of that forecast hour
-	def __calculateValidTime(self, cycle, hour, fHour):
-		# fhour is literally just a number of hours from the init time
-		# cycle is in the format YYYYDDMM and hour is in the format HH
-		
-		# use datetime() to establish the timedelta or whatever the hell the proper terminology is
-		init_time = datetime.strptime(cycle+''+str(hour).zfill(2), '%Y%m%d%H')
-		valid_time = init_time + timedelta(hours=fHour)
-		return valid_time
-
-		
-	# TODO remove testing function
-	def testValidTime(self, cycle, hour, fHour):
-		return self.__calculateValidTime(cycle, hour, fHour)
+    # given a model, run, forecase hour, and member number, generates the path to that hypothetical GRIB file
+    def __makeLocalPath(self, model, cycle, hour, member, fHour):
+        fileName = self.__gribName(model, cycle, hour, member, fHour)
+        cyclec = cycle + str(hour).zfill(2)
+        localPath = model + '/' + cyclec + '/' + fileName
+        return self.constants['rootSrc'] + localPath
 
 
-	# returns true if particular GRIB already exists in database, false if not
-	# returns path to file, if it exists, otherwise returns None
-	def checkForFile(self, model, cycle, hour, member, fHour):
-		cyclec = cycle + str(hour).zfill(2)
-		sqlString = "SELECT path FROM " + self.constants['archive'] + " WHERE model='" + model + "' AND cycle='" + cyclec + "' AND member = '" + str(member) + "' and fhour = '" + str(fHour).zfill(3) + "'" # build appropriate SQL string
+    # given a model init time and forecast hour, calculates the valid time of that forecast hour
+    def __calculateValidTime(self, cycle, hour, fHour):
+        # fhour is literally just a number of hours from the init time
+        # cycle is in the format YYYYDDMM and hour is in the format HH
+        
+        # use datetime() to establish the timedelta or whatever the hell the proper terminology is
+        init_time = datetime.strptime(cycle+''+str(hour).zfill(2), '%Y%m%d%H')
+        valid_time = init_time + timedelta(hours=fHour)
+        return valid_time
 
-		self.curs.execute(sqlString)
-		result = self.curs.fetchall()
-
-		#print(result)
-
-		# if we get a list of len > 0 then we know the file exists, so just return the file path
-		# otherwise, return False but also return the hypothetical path for IF the file did exist...so that this method can be flexible for creating a file that doesn't exist
-		if len(result) > 0:
-			return (True, result[0][0])
-		else:
-			return (False, self.__makeLocalPath(model, cycle, hour, member, fHour))
-	
-
-	# returns path to appropriate GRIB2 file which was just created
-	# raises ValueError when GRIB isn't available from NOMADS
-	def downloadGrib(self, model, cycle, hour, member, fHour):
-		#filePath = self.makeLocalPath(model, run, fHour, member) # create file path based on input vars
-		fileExists, filePath = self.checkForFile(model, cycle, hour, member, fHour) # check if that path exists already
-		# if it exists, just return the path...otherwise download it and then return the path
-		if fileExists and os.path.exists(filePath[0]):
-			return filePath
-		else:
-			gribUrl = self.__makeWebPath(model, cycle, hour, member, fHour) # create web path to download GRIB
-			#print(fileExists)
-			#print(filePath)
-			os.makedirs(os.path.dirname(filePath), exist_ok=True) # os.makedirs ensures that the directory we need is created if it doesn't already exist
-
-			# download appropriate GRIB from NOMADS
-			try: 
-				with url.urlopen(gribUrl, None, 30) as mike:
-					with open(filePath, 'wb') as gribby:
-						gribby.write(mike.read()) # first, write the GRIB file to disk
-						self.__createNewGrib(model, cycle, hour, member, fHour) # second, create record of the GRIB we just created in the database
-			except HTTPError as hte:
-				raise ValueError('Specified GRIB (' + self.__gribName(model, cycle, hour, member, fHour) + ') not available for download.')
-				#return None
-				#print(filePath)
-			except URLError as urle:
-				if isinstance(urle.reason, timeout):
-					raise GRIBTimeoutException("NOMADS connection timed out for " + self.__gribName(model, cycle, hour, member, fHour), filePath)
-				else:
-					raise
-			except timeout as ste:
-				raise GRIBTimeoutError("There was a connection error with " + self.__gribName(model, cycle, hour, member, fHour), filePath)
-
-			return filePath
+        
+    # TODO remove testing function
+    def testValidTime(self, cycle, hour, fHour):
+        return self.__calculateValidTime(cycle, hour, fHour)
 
 
-	# downloads all forecast hours for a certain model and member
-	def downloadModel(self, model, cycle, hour, member=None):
-		maxFHour = self.models[model]['fHours'] # set up loop to stop at the final forecast hour specified in configuration
-		inc = self.models[model]['increment'] # set up loop to increment by specified number of forecast hours in configuration
+    # returns true if particular GRIB already exists in database, false if not
+    # returns path to file, if it exists, otherwise returns None
+    def checkForFile(self, model, cycle, hour, member, fHour):
+        cyclec = cycle + str(hour).zfill(2)
+        sqlString = "SELECT path FROM " + self.constants['archive'] + " WHERE model='" + model + "' AND cycle='" + cyclec + "' AND member = '" + str(member) + "' and fhour = '" + str(fHour).zfill(3) + "'" # build appropriate SQL string
 
-		# loop through every forecast hour 
-		for i in range(0, maxFHour+inc, inc):
-			# if no member is specified, we're looping through EVERY member of the ensemble...
-			if member is None:
-				# download control member
-				try:
-					self.downloadGrib(model, cycle, hour, -1, i) 
-				except ValueError as v:
-					print(str(v))
-				except GRIBTimeoutError as gte: # if the connection times out, just print the filepath of the missing GRIB
-					print(str(gte))
+        self.curs.execute(sqlString)
+        result = self.curs.fetchall()
 
-				# loop through every member if no member is selected
-				for j in range(1,self.models[model]['members']+1):
-					#print(j)
-					try:
-						self.downloadGrib(model, cycle, hour, j, i)
-					except ValueError as v:
-						print(str(v))
-					except GRIBTimeoutError as gte: # if the connection times out, just print the filepath of the missing GRIB
-						print(str(gte))
-			else:
-				try: 
-					self.downloadGrib(model, cycle, hour, member, i) # otherwise just download the requested member
-				except ValueError as v:
-					print(str(v))
-				except GRIBTimeoutError as gte:
-					print(str(gte))
+        #print(result)
 
+        # if we get a list of len > 0 then we know the file exists, so just return the file path
+        # otherwise, return False but also return the hypothetical path for IF the file did exist...so that this method can be flexible for creating a file that doesn't exist
+        if len(result) > 0:
+            return (True, result[0][0])
+        else:
+            return (False, self.__makeLocalPath(model, cycle, hour, member, fHour))
+    
 
-	# creates a new entry in grib database with details of a particular GRIB file
-	# 'private' method which should only be run within downloadGrib(), after a GRIB has been successfully downloaded, to preserve db
-	def __createNewGrib(self, model, cycle, hour, member, fHour):
-		filePath = self.__makeLocalPath(model, cycle, hour, member, fHour) # start by getting the path to the file
+    # returns path to appropriate GRIB2 file which was just created
+    # raises ValueError when GRIB isn't available from NOMADS
+    def downloadGrib(self, model, cycle, hour, member, fHour):
+        #filePath = self.makeLocalPath(model, run, fHour, member) # create file path based on input vars
+        fileExists, filePath = self.checkForFile(model, cycle, hour, member, fHour) # check if that path exists already
+        # if it exists, just return the path...otherwise download it and then return the path
+        if fileExists and os.path.exists(filePath[0]):
+            return filePath
+        else:
+            gribUrl = self.__makeWebPath(model, cycle, hour, member, fHour) # create web path to download GRIB
+            #print(fileExists)
+            #print(filePath)
+            os.makedirs(os.path.dirname(filePath), exist_ok=True) # os.makedirs ensures that the directory we need is created if it doesn't already exist
 
-		#db = self.constants['dbname']
-		#table = self.constants['archive']
-		#conn = sq.connect(db)
-		#c = conn.cursor()
+            # download appropriate GRIB from NOMADS
+            try: 
+                with url.urlopen(gribUrl, None, 30) as mike:
+                    with open(filePath, 'wb') as gribby:
+                        gribby.write(mike.read()) # first, write the GRIB file to disk
+                        self.__createNewGrib(model, cycle, hour, member, fHour) # second, create record of the GRIB we just created in the database
+            except HTTPError as hte:
+                raise ValueError('Specified GRIB (' + self.__gribName(model, cycle, hour, member, fHour) + ') not available for download.')
+                #return None
+                #print(filePath)
+            except URLError as urle:
+                if isinstance(urle.reason, timeout):
+                    raise GRIBTimeoutException("NOMADS connection timed out for " + self.__gribName(model, cycle, hour, member, fHour), filePath)
+                else:
+                    raise
+            except timeout as ste:
+                raise GRIBTimeoutError("There was a connection error with " + self.__gribName(model, cycle, hour, member, fHour), filePath)
 
-		validTime = self.__calculateValidTime(cycle, hour, fHour)
-
-		cyclec = cycle + str(hour).zfill(2)
-		modelTuple = [(model, cyclec, member, fHour, filePath, validTime)]
-		sqlString = 'INSERT INTO ' + self.constants['archive'] + ' VALUES (?, ?, ?, ?, ?, ?)'
-
-		# uses SQLite's executemany() function, which I have only recently discovered but which I understand as follows
-		# replace each individual field's value with a ? in records denoted by ( ... ) in the SQL command
-		# pass in an array of tuples, with each tuple being one of the records to insert, and each value in a tuple being a field value in the specified record
-		# even if these details aren't 100% accurate...I mean it works, so like...
-		self.curs.executemany(sqlString, modelTuple)
-		self.conn.commit()
+            return filePath
 
 
-	# deletes all GRIB files with cycle ID older than a certain date
-	# optionally, do this only for a specified model
-	# notably enough  
-	def deleteOldGribs(self, olderThan, model=None):
-		sqlString = "SELECT path FROM " + self.constants['archive'] + " WHERE cycle < " + olderThan
-		if model is not None:
-			sqlString = sqlString + " AND model='" + model + "'"
-		self.curs.execute(sqlString)
-		result = self.curs.fetchall()
-		
-		if result is None:
-			return
-		else:
-			for thing in result:
-				try:
-					os.remove(thing[0])
-				except OSError:
-					pass
+    # downloads all forecast hours for a certain model and member
+    def downloadModel(self, model, cycle, hour, member=None):
+        maxFHour = self.models[model]['fHours'] # set up loop to stop at the final forecast hour specified in configuration
+        inc = self.models[model]['increment'] # set up loop to increment by specified number of forecast hours in configuration
 
-		sqlString = "DELETE FROM " + self.constants['archive'] + " WHERE cycle < " + olderThan
-		if model is not None:
-			sqlString = sqlString + " AND model='" + model + "'"
-		self.curs.execute(sqlString)
-		self.conn.commit()
+        # loop through every forecast hour 
+        for i in range(0, maxFHour+inc, inc):
+            # if no member is specified, we're looping through EVERY member of the ensemble...
+            if member is None:
+                # download control member
+                try:
+                    self.downloadGrib(model, cycle, hour, -1, i) 
+                except ValueError as v:
+                    print(str(v))
+                except GRIBTimeoutError as gte: # if the connection times out, just print the filepath of the missing GRIB
+                    print(str(gte))
 
-
-	# deletes a single specified GRIB file
-	def deleteGrib(self, model, cycle, hour, member, fHour):
-		sqlString = "DELETE FROM " + self.constants['archive'] + " WHERE model='" + model + "' AND cycle='" + cycle + str(hour).zfill(2) + "' AND member='" + str(member) + "' AND fhour='" + str(fHour) + "'"
-		self.curs.execute(sqlString)
-		self.conn.commit()
-
-
-	# returns a list of the unique model cycles available in the database
-	def getModelCycles(self, model=None):
-		sqlString = "SELECT DISTINCT cycle FROM " + self.constants['archive']
-		if model is not None:
-			sqlString = sqlString + " WHERE model='" + model + "'"
-		self.curs.execute(sqlString)
-		result = self.curs.fetchall()
-		return ["".join(item) for item in result]
+                # loop through every member if no member is selected
+                for j in range(1,self.models[model]['members']+1):
+                    #print(j)
+                    try:
+                        self.downloadGrib(model, cycle, hour, j, i)
+                    except ValueError as v:
+                        print(str(v))
+                    except GRIBTimeoutError as gte: # if the connection times out, just print the filepath of the missing GRIB
+                        print(str(gte))
+            else:
+                try: 
+                    self.downloadGrib(model, cycle, hour, member, i) # otherwise just download the requested member
+                except ValueError as v:
+                    print(str(v))
+                except GRIBTimeoutError as gte:
+                    print(str(gte))
 
 
-	# queries NOMADS to see if a given model run is available
-	# not the most elegant solution, but NOMADS doesn't appear to have an easy way to test if a GRIB exists
-	def queryForGrib(self, model, cycle, hour, member=None, fHour=None):
-		if member is None:
-			member = -1
-		if fHour is None:
-			fHour = 0
-		try:
-			if member is None or fHour is None:
-				fileExists = False
-			else:
-				fileExists, filePath = self.checkForFile(model, cycle, hour, member, fHour)
-			self.downloadGrib(model, cycle, hour, member, fHour)
-			if not fileExists:
-				self.deleteGrib(model, cycle, hour, member, fHour)
-			return True
-		except ValueError as v:
-			return False
+    # creates a new entry in grib database with details of a particular GRIB file
+    # 'private' method which should only be run within downloadGrib(), after a GRIB has been successfully downloaded, to preserve db
+    def __createNewGrib(self, model, cycle, hour, member, fHour):
+        filePath = self.__makeLocalPath(model, cycle, hour, member, fHour) # start by getting the path to the file
+
+        #db = self.constants['dbname']
+        #table = self.constants['archive']
+        #conn = sq.connect(db)
+        #c = conn.cursor()
+
+        validTime = self.__calculateValidTime(cycle, hour, fHour)
+
+        cyclec = cycle + str(hour).zfill(2)
+        modelTuple = [(model, cyclec, member, fHour, filePath, validTime)]
+        sqlString = 'INSERT INTO ' + self.constants['archive'] + ' VALUES (?, ?, ?, ?, ?, ?)'
+
+        # uses SQLite's executemany() function, which I have only recently discovered but which I understand as follows
+        # replace each individual field's value with a ? in records denoted by ( ... ) in the SQL command
+        # pass in an array of tuples, with each tuple being one of the records to insert, and each value in a tuple being a field value in the specified record
+        # even if these details aren't 100% accurate...I mean it works, so like...
+        self.curs.executemany(sqlString, modelTuple)
+        self.conn.commit()
 
 
-	# TODO testing
-	# Returns a list of all the images stored in the database
-	def listAllImages(self):
-		sqlString = 'SELECT * FROM ' + self.constants['imgArch'] + ' ORDER BY cycle ASC'
-		self.curs.execute(sqlString)
-		result = self.curs.fetchall()
-		if result is None:
-			raise ValueError('There is no data in the specified database.')
-		return result
+    # deletes all GRIB files with cycle ID older than a certain date
+    # optionally, do this only for a specified model
+    # notably enough  
+    def deleteOldGribs(self, olderThan, model=None):
+        sqlString = "SELECT path FROM " + self.constants['archive'] + " WHERE cycle < " + olderThan
+        if model is not None:
+            sqlString = sqlString + " AND model='" + model + "'"
+        self.curs.execute(sqlString)
+        result = self.curs.fetchall()
+        
+        if result is None:
+            return
+        else:
+            for thing in result:
+                try:
+                    os.remove(thing[0])
+                except OSError:
+                    pass
+
+        sqlString = "DELETE FROM " + self.constants['archive'] + " WHERE cycle < " + olderThan
+        if model is not None:
+            sqlString = sqlString + " AND model='" + model + "'"
+        self.curs.execute(sqlString)
+        self.conn.commit()
 
 
-	# TODO testing
-	# Returns the latest image stored in the database
-	# Optionally, specify a model to search by
-	def getLatestImage(self, model=None):
-		if model is None:
-			sqlString = "SELECT DISTINCT images.model as im, images.cycle as ic FROM images INNER JOIN ( SELECT model, MAX(cycle) as cycle FROM images ) i ON im=i.model AND ic=i.cycle" # okay does this inner join make any effing sense?
-		else:	
-			sqlString = "SELECT DISTINCT images.model as im, images.cycle as ic FROM images INNER JOIN ( SELECT model, MAX(cycle) as cycle FROM images WHERE model='" + model + "' ) i ON im=i.model AND ic=i.cycle" # lmao how about this one
-
-		self.curs.execute(sqlString)
-		result = self.curs.fetchall()
-		if result is None:
-			raise ValueError('There is no data for the requested model present in the specified database.')
-		return result
+    # deletes a single specified GRIB file
+    def deleteGrib(self, model, cycle, hour, member, fHour):
+        sqlString = "DELETE FROM " + self.constants['archive'] + " WHERE model='" + model + "' AND cycle='" + cycle + str(hour).zfill(2) + "' AND member='" + str(member) + "' AND fhour='" + str(fHour) + "'"
+        self.curs.execute(sqlString)
+        self.conn.commit()
 
 
-	# TODO testing
-	def checkForImage(self, model, cycle, hour, member, fHour):
-		cyclec = cycle + str(hour).zfill(2)
-		sqlString = "SELECT path FROM " + self.constants['imgArchive'] + "WHERE model='" + model + "' AND cycle='" + cyclec + "' AND member='" + str(member) + "' AND fhour = '" + str(fHour).zfill(3) + "'" # build appropriate string
-		
-		self.curs.execute(sqlString)
-		result = self.curs.fetchall()
-
-		# similar logic to checkForFile()
-		# if there is a matching image, return a tuple containing boolean True and the path to the image from the database
-		# if there is no matching image, return a tuple contianing boolean False and the path that would be used for the image if it existed
-		if len(result) > 0:
-			return (True, result[0][0])
-		else:
-			return (False, self.__makeImagePath(model, cycle, hour, member, fHour))
+    # returns a list of the unique model cycles available in the database
+    def getModelCycles(self, model=None):
+        sqlString = "SELECT DISTINCT cycle FROM " + self.constants['archive']
+        if model is not None:
+            sqlString = sqlString + " WHERE model='" + model + "'"
+        self.curs.execute(sqlString)
+        result = self.curs.fetchall()
+        return ["".join(item) for item in result]
 
 
-	# TODO testing
-	def __imageName(self, model, cycle, hour, member, fHour):
-		# YYYYMMDD.HHz.fXXX
-		memberString = self.__makeMemberString(model, member)
-		imageString = model + '.' + cycle + '.' + str(hour).zfill(2) + '.f' + str(fHour).zfill(3) + '.' + memberString + '.' + self.constants['imgFormat']
-		return imageString
+    # queries NOMADS to see if a given model run is available
+    # not the most elegant solution, but NOMADS doesn't appear to have an easy way to test if a GRIB exists
+    def queryForGrib(self, model, cycle, hour, member=None, fHour=None):
+        if member is None:
+            member = -1
+        if fHour is None:
+            fHour = 0
+        try:
+            if member is None or fHour is None:
+                fileExists = False
+            else:
+                fileExists, filePath = self.checkForFile(model, cycle, hour, member, fHour)
+            self.downloadGrib(model, cycle, hour, member, fHour)
+            if not fileExists:
+                self.deleteGrib(model, cycle, hour, member, fHour)
+            return True
+        except ValueError as v:
+            return False
 
 
-	# TODO testing
-	def __makeImagePath():
-		fileName = self.__imageName(model, cycle, hour, member, fHour)
-		cyclec = cycle + str(hour).zfill(2)
-		imgPath = model + '/' + cyclec + '/' + fileName
-		return self.constants['imgSrc'] + localPath
+    # TODO testing
+    # Returns a list of all the images stored in the database
+    def listAllImages(self):
+        sqlString = 'SELECT * FROM ' + self.constants['imgArch'] + ' ORDER BY cycle ASC'
+        self.curs.execute(sqlString)
+        result = self.curs.fetchall()
+        if result is None:
+            raise ValueError('There is no data in the specified database.')
+        return result
 
 
-	# TODO implement
-	def getMissingImages():
-		Exception('Do we need this in DBManager?')
+    # TODO testing
+    # Returns the latest image stored in the database
+    # Optionally, specify a model to search by
+    def getLatestImage(self, model=None):
+        if model is None:
+            sqlString = "SELECT DISTINCT images.model as im, images.cycle as ic FROM images INNER JOIN ( SELECT model, MAX(cycle) as cycle FROM images ) i ON im=i.model AND ic=i.cycle" # okay does this inner join make any effing sense?
+        else:   
+            sqlString = "SELECT DISTINCT images.model as im, images.cycle as ic FROM images INNER JOIN ( SELECT model, MAX(cycle) as cycle FROM images WHERE model='" + model + "' ) i ON im=i.model AND ic=i.cycle" # lmao how about this one
+
+        self.curs.execute(sqlString)
+        result = self.curs.fetchall()
+        if result is None:
+            raise ValueError('There is no data for the requested model present in the specified database.')
+        return result
 
 
-	# TODO testing
-	def __createNewImage(self, model, cycle, hour, member, fHour):
-		# start by figuring out where the image belongs on the filesystem
-		# mike would just like to say, for the record, that he's really tired
-		filePath = self.__makeImgPath(model, cycle, hour, member, fHour)
-		cyclec = cycle + str(hour).zfill(2)
+    # TODO testing
+    def checkForImage(self, model, cycle, hour, member, fHour):
+        cyclec = cycle + str(hour).zfill(2)
+        sqlString = "SELECT path FROM " + self.constants['imgArchive'] + "WHERE model='" + model + "' AND cycle='" + cyclec + "' AND member='" + str(member) + "' AND fhour = '" + str(fHour).zfill(3) + "'" # build appropriate string
+        
+        self.curs.execute(sqlString)
+        result = self.curs.fetchall()
 
-		imgTuple = [(model, cyclec, member, fHour, filePath)]
-	
-		# now add the reference to the image database
-		sqlString = 'INSERT INTO ' + self.constants['imgArchive'] + ' VALUES (?, ?, ?, ?, ?)'
-		self.curs.executemany(sqlString, imgTuple)
-		self.conn.commit()
-		
-
-	# TODO testing
-	# deletes all images older than specified date, optionally for only one specific model
-	def deleteOldImages(self, olderThan, model=None):
-		# sql query to get the path to any files that will be deleted
-		sqlString = "SELECT path FROM " + self.constants['imgArchive'] + " WHERE cycle < " + olderThan
-		if model is not None:
-			sqlString = sqlString + " AND model='" + model + "'"
-		self.curs.execute(sqlString)
-		result = self.curs.fetchall()
-		
-		# for every path that was returned...remove it from the filesystem
-		if result is None:
-			return
-		else:
-			for thing in result:
-				try:
-					os.remove(thing[0])
-				except OSError:
-					pass
-
-		# now delete the appropriate references from the database
-		sqlString = "DELETE FROM " + self.constants['imgArchive'] + " WHERE cycle < " + olderThan
-		if model is not None:
-			sqlString = sqlString + " AND model='" + model + "'"
-		self.curs.execute(sqlString)
-		self.conn.commit()
+        # similar logic to checkForFile()
+        # if there is a matching image, return a tuple containing boolean True and the path to the image from the database
+        # if there is no matching image, return a tuple contianing boolean False and the path that would be used for the image if it existed
+        if len(result) > 0:
+            return (True, result[0][0])
+        else:
+            return (False, self.__makeImagePath(model, cycle, hour, member, fHour))
 
 
-	# TODO testing
-	# deletes a single image from the database
-	def deleteImage(self, model, cycle, hour, member, fHour):
-		sqlString = "DELETE FROM " + constants.archive['imgArchive'] + " WHERE model ='" + model + "' AND cycle='" + cycle + str(hour).zfill(2) + "' AND member='" + str(member) + "' AND fhour='" + str(fHour) + "'"
-		self.curs.execute(sqlString)
-		self.conn.commit()
+    # TODO testing
+    def __imageName(self, model, cycle, hour, member, fHour):
+        # YYYYMMDD.HHz.fXXX
+        memberString = self.__makeMemberString(model, member)
+        imageString = model + '.' + cycle + '.' + str(hour).zfill(2) + '.f' + str(fHour).zfill(3) + '.' + memberString + '.' + self.constants['imgFormat']
+        return imageString
+
+
+    # TODO testing
+    def __makeImagePath():
+        fileName = self.__imageName(model, cycle, hour, member, fHour)
+        cyclec = cycle + str(hour).zfill(2)
+        imgPath = model + '/' + cyclec + '/' + fileName
+        return self.constants['imgSrc'] + localPath
+
+
+    # TODO implement
+    def getMissingImages():
+        Exception('Do we need this in DBManager?')
+
+
+    # TODO testing
+    def __createNewImage(self, model, cycle, hour, member, fHour):
+        # start by figuring out where the image belongs on the filesystem
+        # mike would just like to say, for the record, that he's really tired
+        filePath = self.__makeImgPath(model, cycle, hour, member, fHour)
+        cyclec = cycle + str(hour).zfill(2)
+
+        imgTuple = [(model, cyclec, member, fHour, filePath)]
+    
+        # now add the reference to the image database
+        sqlString = 'INSERT INTO ' + self.constants['imgArchive'] + ' VALUES (?, ?, ?, ?, ?)'
+        self.curs.executemany(sqlString, imgTuple)
+        self.conn.commit()
+        
+
+    # TODO testing
+    # deletes all images older than specified date, optionally for only one specific model
+    def deleteOldImages(self, olderThan, model=None):
+        # sql query to get the path to any files that will be deleted
+        sqlString = "SELECT path FROM " + self.constants['imgArchive'] + " WHERE cycle < " + olderThan
+        if model is not None:
+            sqlString = sqlString + " AND model='" + model + "'"
+        self.curs.execute(sqlString)
+        result = self.curs.fetchall()
+        
+        # for every path that was returned...remove it from the filesystem
+        if result is None:
+            return
+        else:
+            for thing in result:
+                try:
+                    os.remove(thing[0])
+                except OSError:
+                    pass
+
+        # now delete the appropriate references from the database
+        sqlString = "DELETE FROM " + self.constants['imgArchive'] + " WHERE cycle < " + olderThan
+        if model is not None:
+            sqlString = sqlString + " AND model='" + model + "'"
+        self.curs.execute(sqlString)
+        self.conn.commit()
+
+
+    # TODO testing
+    # deletes a single image from the database
+    def deleteImage(self, model, cycle, hour, member, fHour):
+        sqlString = "DELETE FROM " + constants.archive['imgArchive'] + " WHERE model ='" + model + "' AND cycle='" + cycle + str(hour).zfill(2) + "' AND member='" + str(member) + "' AND fhour='" + str(fHour) + "'"
+        self.curs.execute(sqlString)
+        self.conn.commit()
 
 
 
 class GRIBTimeoutError(Exception):
-	def __init__(self, message, gribname):
-		super().__init__(message)
-		self.gribname = gribname 
+    def __init__(self, message, gribname):
+        super().__init__(message)
+        self.gribname = gribname 
