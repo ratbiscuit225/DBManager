@@ -7,13 +7,19 @@ import sys
 
 from datetime import datetime, timedelta, timezone
 
+### CONFIGURATION
+
+hourLimit=20 # the number of hours to look back in the past
+
+###
+
 # cycles through 3-day old run up through the present, and determines what model cycles are available on NOMADS
 def getNomadsCycles(manager, model):
 	cycleInterval = manager.models[model]['increment']
 	cycleBase = manager.models[model]['base']
 	
 	currentTime = datetime.utcnow().replace(tzinfo=timezone.utc)
-	earlierTime = currentTime - timedelta(days=1)
+	earlierTime = currentTime - timedelta(hours=hourLimit)
 	cyclesCompleted = int(earlierTime.hour / cycleInterval)
 	startTime = datetime(year=earlierTime.year, month=earlierTime.month, day=earlierTime.day, hour=cycleBase + cycleInterval*cyclesCompleted, tzinfo=timezone.utc)
 	
@@ -59,7 +65,7 @@ def updateDatabase(manager, model, text):
 				print(str(v))
 	
 	# delete the old runs
-	oldTime = datetime.utcnow().replace(tzinfo=timezone.utc) - timedelta(days=3)
+	oldTime = datetime.utcnow().replace(tzinfo=timezone.utc) - timedelta(hours=hourLimit+6)
 	deleted = manager.deleteOldGribs(oldTime.strftime('%Y%m%d%H'))
 	return deleted
 
@@ -80,16 +86,18 @@ def main():
 	else:
 		text = False
 
-	manager = dbm.DBManager('/home/michael.rehnberg/dev/DBManager/test_config.yml')
+	manager = dbm.DBManager('/var/www/html/mike/DBManager/test_config.yml')
 
 	# update the databases
 	# TODO see how badly this f's up the time
 	if text:
 		print('Updating GEFS database...')
 	deleted_gefs = updateDatabase(manager, 'GEFS', text)
+        print(deleted_gefs)
 	if text:
 		print('Updating GEPS database...')
 	deleted_geps = updateDatabase(manager, 'GEPS', text)
+        print(deleted_geps)
 
 	# generate new images
 	#print('Generating missing images...')
